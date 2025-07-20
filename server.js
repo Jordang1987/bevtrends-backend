@@ -1,33 +1,41 @@
 const express = require('express');
 const cors = require('cors');
-
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3000;
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// Health check route for Render
-app.get('/', (req, res) => {
-  res.send('OK');
-});
-
-// Mock trending drinks data
-const mockTrendingData = [
-  { id: 1, name: 'Old Fashioned', type: 'Cocktail', popularity: 95 },
-  { id: 2, name: 'Espresso Martini', type: 'Cocktail', popularity: 91 },
-  { id: 3, name: 'Aperol Spritz', type: 'Aperitif', popularity: 88 },
-  { id: 4, name: 'Negroni', type: 'Cocktail', popularity: 85 },
-  { id: 5, name: 'Margarita', type: 'Cocktail', popularity: 83 }
+// ✅ Sample mock data
+const mockDrinks = [
+  {
+    id: '1',
+    name: 'Spicy Margarita',
+    tags: ['Spicy', 'Tequila', 'Citrus'],
+    location: { barName: 'Velvet Lounge', city: 'Tampa', distance: 2.1 },
+    imageUrl: 'https://picsum.photos/seed/spicy-marg/800/600',
+  },
+  {
+    id: '2',
+    name: 'Hazy IPA',
+    tags: ['Hazy', 'Citra Hops', 'Local'],
+    location: { barName: 'Hop City', city: 'Tampa', distance: 5.3 },
+    imageUrl: 'https://picsum.photos/seed/hazy-ipa/800/600',
+  },
+  {
+    id: '3',
+    name: 'Old Fashioned',
+    tags: ['Bourbon', 'Classic', 'Orange Peel'],
+    location: { barName: 'Barrel & Rye', city: 'Tampa', distance: 3.4 },
+    imageUrl: 'https://picsum.photos/seed/old-fashioned/800/600',
+  },
 ];
 
-// API route
-app.get('/trending', (req, res) => {
-  res.json(mockTrendingData);
+// ✅ Route for Near Me trending drinks
+app.get('/trending/near-me', (req, res) => {
+  res.json(mockDrinks);
 });
 
-// Start server
 app.listen(PORT, () => {
-  console.log(`✅ Server is running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
