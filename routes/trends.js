@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
-const { getTrendingDrinks } = require('../controllers/trendsController');
+const { getAllDrinks, getDrinkById } = require('../controllers/trendsController');
 
-router.get('/', getTrendingDrinks);
+router.get('/near-me', getAllDrinks);
+router.get('/:id', getDrinkById);
 
 module.exports = router;
