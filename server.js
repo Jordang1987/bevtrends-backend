@@ -1,84 +1,80 @@
 const express = require("express");
-const cors = require("cors");
-const app = express();
-const PORT = process.env.PORT || 3000;
+const router = express.Router();
 
-app.use(cors());
-app.use(express.json());
-
-// Import routes
-const trendsRoutes = require("./routes/trends");
-const postRoutes = require("./routes/posts"); // ✅ Import posts routes
-
-// Use routes
-app.use("/trending", trendsRoutes);
-app.use("/posts", postRoutes); // ✅ Register posts route
-
-// Root route
-app.get("/", (req, res) => {
-  res.send("BevTrends Backend is Running 🚀");
-});
-
-// Mock trending drinks (still available for now)
-const mockDrinks = [
+// Temporary in-memory posts (replace with DB later)
+let mockPosts = [
   {
     id: "1",
-    name: "Spicy Margarita",
-    tags: ["Spicy", "Tequila", "Citrus"],
-    location: { barName: "Velvet Lounge", city: "Tampa", distance: 2.1 },
-    imageUrl: "https://picsum.photos/seed/spicy-marg/800/600",
-    topBrands: ["Casamigos", "Don Julio", "Espolòn"],
-    sponsoredBrands: ["El Jimador"],
-    recipes: [
-      "2 oz Tequila",
-      "1 oz Lime Juice",
-      "0.75 oz Triple Sec",
-      "2 slices Jalapeño",
-      "Salt Rim & Lime Garnish",
-    ],
+    user: "Jane Doe",
+    imageUrl: "https://picsum.photos/id/237/400/300",
+    caption: "Enjoying this beautiful cocktail at Velvet Lounge!",
+    likes: 10,
+    comments: ["Love this!", "Where is this place?"],
+    favorited: false,
   },
   {
     id: "2",
-    name: "Hazy IPA",
-    tags: ["Hazy", "Citra Hops", "Local"],
-    location: { barName: "Hop City", city: "Tampa", distance: 5.3 },
-    imageUrl: "https://picsum.photos/seed/hazy-ipa/800/600",
-    topBrands: ["Cigar City Jai Alai", "Trillium", "Tree House"],
-    sponsoredBrands: ["Goose Island Hazy"],
-    recipes: ["N/A - Beer"],
+    user: "John Smith",
+    imageUrl: "https://picsum.photos/id/238/400/300",
+    caption: "This IPA is unreal 🍺",
+    likes: 7,
+    comments: ["Need to try this!", "Looks great!"],
+    favorited: true,
   },
   {
     id: "3",
-    name: "Old Fashioned",
-    tags: ["Bourbon", "Classic", "Orange Peel"],
-    location: { barName: "Barrel & Rye", city: "Tampa", distance: 3.4 },
-    imageUrl: "https://picsum.photos/seed/old-fashioned/800/600",
-    topBrands: ["Buffalo Trace", "Woodford Reserve", "Bulleit"],
-    sponsoredBrands: ["Maker’s Mark"],
-    recipes: [
-      "2 oz Bourbon",
-      "1 sugar cube",
-      "2 dashes Angostura bitters",
-      "Orange twist garnish",
-    ],
+    user: "Ava Rose",
+    imageUrl: "https://picsum.photos/id/239/400/300",
+    caption: "Non-alcoholic Negroni is a game changer!",
+    likes: 4,
+    comments: [],
+    favorited: false,
   },
 ];
 
-// Old trending endpoints
-app.get("/trending/near-me", (req, res) => {
-  res.json(mockDrinks);
+// ✅ GET all posts
+router.get("/", (req, res) => {
+  res.json(mockPosts);
 });
 
-app.get("/trending/:id", (req, res) => {
-  const drink = mockDrinks.find((d) => d.id === req.params.id);
-  if (drink) {
-    res.json(drink);
+// ✅ GET a single post by ID
+router.get("/:id", (req, res) => {
+  const post = mockPosts.find((p) => p.id === req.params.id);
+  if (post) {
+    res.json(post);
   } else {
-    res.status(404).json({ error: "Drink not found" });
+    res.status(404).json({ error: "Post not found" });
   }
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+// ✅ LIKE a post
+router.post("/:id/like", (req, res) => {
+  const post = mockPosts.find((p) => p.id === req.params.id);
+  if (!post) return res.status(404).json({ error: "Post not found" });
+
+  post.likes += 1;
+  res.json(post);
 });
+
+// ✅ ADD a comment
+router.post("/:id/comment", (req, res) => {
+  const post = mockPosts.find((p) => p.id === req.params.id);
+  if (!post) return res.status(404).json({ error: "Post not found" });
+
+  const { comment } = req.body;
+  if (!comment) return res.status(400).json({ error: "Comment text required" });
+
+  post.comments.push(comment);
+  res.json(post);
+});
+
+// ✅ TOGGLE favorite
+router.post("/:id/favorite", (req, res) => {
+  const post = mockPosts.find((p) => p.id === req.params.id);
+  if (!post) return res.status(404).json({ error: "Post not found" });
+
+  post.favorited = !post.favorited;
+  res.json(post);
+});
+
+module.exports = router;
