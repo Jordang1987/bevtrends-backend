@@ -1,4 +1,17 @@
+# Dependencies
 node_modules
+
+# Environment variables
 .env
+
+# Firebase Admin keys (specific files)
 bevtrends-service-account.json
 bevtrends-e701a-firebase-adminsdk-fbsvc-a6472ec18c.json
+
+# Ignore ALL JSON files (extra safety for private keys)
+*.json
+
+# Logs
+npm-debug.log
+yarn-debug.log
+yarn-error.log
