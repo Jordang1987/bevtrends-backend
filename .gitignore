@@ -1,2 +1,4 @@
-bevtrends-e701a-firebase-adminsdk-fbsvc-a6472ec18c.json 
-bevtrends-service-account.json 
+node_modules
+.env
+bevtrends-service-account.json
+bevtrends-e701a-firebase-adminsdk-fbsvc-a6472ec18c.json
