@@ -1,27 +1,20 @@
-const express = require("express");
-const cors = require("cors");
-require("dotenv").config(); // ✅ Load environment variables
+const express = require('express');
+const cors = require('cors');
 
-const postsRouter = require("./routes/posts");
-const trendsRouter = require("./routes/trends");
+const trendsRoutes = require('./routes/trends');
+const sponsoredRoutes = require('./routes/sponsored');
 
 const app = express();
-
-// ✅ Middleware
-app.use(cors({ origin: "*", methods: "GET,POST,PUT,DELETE,OPTIONS" }));
+app.use(cors());
 app.use(express.json());
 
-// ✅ Routes
-app.use("/posts", postsRouter);
-app.use("/trends", trendsRouter);
+// Routes
+app.use('/trending', trendsRoutes);
+app.use('/sponsored', sponsoredRoutes);
 
-// ✅ Health check route
-app.get("/", (req, res) => {
-  res.send("✅ BevTrends Backend is Running!");
+app.get('/', (req, res) => {
+  res.send('BevTrends API Running 🚀');
 });
 
-// ✅ Start server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
