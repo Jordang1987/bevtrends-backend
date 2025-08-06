@@ -52,17 +52,28 @@ const mockTastemakers = [
 
 // 🔹 Helper: fetch or seed
 async function fetchOrSeed(collectionName, mockData) {
-  const snapshot = await db.collection(collectionName).get();
+  try {
+    console.log(`🔍 Checking Firestore collection: ${collectionName}`);
+    const snapshot = await db.collection(collectionName).get();
 
-  if (snapshot.empty) {
-    console.log(`⚠️ No data in ${collectionName} — seeding mock data...`);
-    for (const item of mockData) {
-      await db.collection(collectionName).doc(item.id || item.title.toLowerCase().replace(/\s+/g, '-')).set(item);
+    if (snapshot.empty) {
+      console.log(`⚠️ No data in ${collectionName} — seeding mock data...`);
+      for (const item of mockData) {
+        const docId = item.id || item.title?.toLowerCase().replace(/\s+/g, '-');
+        console.log(`   ➕ Adding doc: ${docId}`);
+        await db.collection(collectionName).doc(docId).set(item);
+      }
+      console.log(`✅ Seeded ${mockData.length} documents into ${collectionName}`);
+      return mockData;
     }
-    return mockData;
-  }
 
-  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    console.log(`✅ Found ${snapshot.size} documents in ${collectionName}`);
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  } catch (err) {
+    console.error(`❌ Error in fetchOrSeed for ${collectionName}:`, err);
+    throw err; // Let controller catch and send 500
+  }
 }
 
 // Controllers
@@ -71,7 +82,7 @@ exports.getNearMeTrends = async (req, res) => {
     const data = await fetchOrSeed('trending_near_me', mockNearMe);
     res.json(data);
   } catch (err) {
-    console.error('Error fetching Near Me trends:', err);
+    console.error('❌ Error fetching Near Me trends:', err);
     res.status(500).json({ error: 'Failed to fetch Near Me trends' });
   }
 };
@@ -81,7 +92,7 @@ exports.getJournalTrends = async (req, res) => {
     const data = await fetchOrSeed('trending_journal', mockJournal);
     res.json(data);
   } catch (err) {
-    console.error('Error fetching Journal trends:', err);
+    console.error('❌ Error fetching Journal trends:', err);
     res.status(500).json({ error: 'Failed to fetch Journal trends' });
   }
 };
@@ -91,7 +102,7 @@ exports.getTastemakerTrends = async (req, res) => {
     const data = await fetchOrSeed('trending_tastemakers', mockTastemakers);
     res.json(data);
   } catch (err) {
-    console.error('Error fetching Tastemaker trends:', err);
+    console.error('❌ Error fetching Tastemaker trends:', err);
     res.status(500).json({ error: 'Failed to fetch Tastemaker trends' });
   }
 };
