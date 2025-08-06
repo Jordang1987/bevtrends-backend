@@ -1,12 +1,8 @@
 const admin = require('firebase-admin');
+const path = require('path');
 
-let serviceAccount;
-try {
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-} catch (error) {
-  console.error('❌ Failed to parse FIREBASE_SERVICE_ACCOUNT env variable:', error);
-  process.exit(1);
-}
+const serviceAccountPath = '/etc/secrets/firebase-service-account.json';
+const serviceAccount = require(serviceAccountPath);
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount)
