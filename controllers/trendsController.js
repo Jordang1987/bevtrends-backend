@@ -52,38 +52,32 @@ const mockTastemakers = [
 
 // 🔹 Helper: fetch or seed
 async function fetchOrSeed(collectionName, mockData) {
-  try {
-    console.log(`🔍 Checking Firestore collection: ${collectionName}`);
-    const snapshot = await db.collection(collectionName).get();
+  console.log(`🔍 Checking Firestore collection: ${collectionName}`);
+  const snapshot = await db.collection(collectionName).get();
 
-    if (snapshot.empty) {
-      console.log(`⚠️ No data in ${collectionName} — seeding mock data...`);
-      for (const item of mockData) {
-        const docId = item.id || item.title?.toLowerCase().replace(/\s+/g, '-');
-        console.log(`   ➕ Adding doc: ${docId}`);
-        await db.collection(collectionName).doc(docId).set(item);
-      }
-      console.log(`✅ Seeded ${mockData.length} documents into ${collectionName}`);
-      return mockData;
+  if (snapshot.empty) {
+    console.log(`⚠️ No data in ${collectionName} — seeding mock data...`);
+    for (const item of mockData) {
+      const docId = item.id || item.title?.toLowerCase().replace(/\s+/g, '-');
+      console.log(`➕ Adding doc: ${docId}`);
+      await db.collection(collectionName).doc(docId).set(item);
     }
-
-    console.log(`✅ Found ${snapshot.size} documents in ${collectionName}`);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-  } catch (err) {
-    console.error(`❌ Error in fetchOrSeed for ${collectionName}:`, err);
-    throw err; // Let controller catch and send 500
+    return mockData;
   }
+
+  console.log(`✅ Found ${snapshot.size} docs in ${collectionName}`);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
-// Controllers
+// 🔹 Controllers with fallback
 exports.getNearMeTrends = async (req, res) => {
   try {
     const data = await fetchOrSeed('trending_near_me', mockNearMe);
     res.json(data);
   } catch (err) {
     console.error('❌ Error fetching Near Me trends:', err);
-    res.status(500).json({ error: 'Failed to fetch Near Me trends' });
+    console.warn('⚠️ Returning mockNearMe fallback data.');
+    res.json(mockNearMe);
   }
 };
 
@@ -93,7 +87,8 @@ exports.getJournalTrends = async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('❌ Error fetching Journal trends:', err);
-    res.status(500).json({ error: 'Failed to fetch Journal trends' });
+    console.warn('⚠️ Returning mockJournal fallback data.');
+    res.json(mockJournal);
   }
 };
 
@@ -103,6 +98,7 @@ exports.getTastemakerTrends = async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('❌ Error fetching Tastemaker trends:', err);
-    res.status(500).json({ error: 'Failed to fetch Tastemaker trends' });
+    console.warn('⚠️ Returning mockTastemakers fallback data.');
+    res.json(mockTastemakers);
   }
 };
