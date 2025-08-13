@@ -1,0 +1,14 @@
+import { StyleSheet, Text, View } from 'react-native';
+
+export default function Post() {
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>➕ Create a Post</Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  title: { fontSize: 24, fontWeight: 'bold' },
+});
