@@ -22,7 +22,7 @@ if (typeof globalThis.File === "undefined") {
 
 const express = require("express");
 const cors = require("cors");
-const morgan = require("morgan");
+let morgan; try { morgan = require("morgan"); } catch {}
 const helmet = require("helmet");
 const compression = require("compression");
 const cheerio = require("cheerio");
@@ -39,7 +39,7 @@ app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json({ limit: "1mb" }));
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(compression());
-app.use(morgan("dev"));
+if (morgan) app.use(morgan("dev"));
 
 // ---------- Env flags ----------
 const PORT = Number(process.env.PORT) || 10000; // Render injects PORT
