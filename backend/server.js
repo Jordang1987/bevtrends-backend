@@ -1,13 +1,19 @@
 // server.js
-// BevTrends API — Near Me + IBA Recipes
+// BevTrends API — Near Me (mock) + IBA recipes (safe by default)
 // Run: node server.js
 // NOTE: backend/package.json should NOT have "type":"module"
+
+require("dotenv").config();
 
 // ---------- Node18 polyfill (Undici expects global File) ----------
 if (typeof globalThis.File === "undefined") {
   const { Blob } = require("buffer");
   class File extends Blob {
-    constructor(chunks, name, opts = {}) { super(chunks, opts); this.name = String(name); this.lastModified = opts.lastModified ?? Date.now(); }
+    constructor(chunks, name, opts = {}) {
+      super(chunks, opts);
+      this.name = String(name);
+      this.lastModified = opts.lastModified ?? Date.now();
+    }
     get [Symbol.toStringTag]() { return "File"; }
   }
   globalThis.File = File;
@@ -17,16 +23,35 @@ if (typeof globalThis.File === "undefined") {
 const express = require("express");
 const cors = require("cors");
 const morgan = require("morgan");
+const helmet = require("helmet");
+const compression = require("compression");
 const cheerio = require("cheerio");
 const fs = require("fs/promises");
 const path = require("path");
 
+// ---------- App ----------
 const app = express();
-app.use(cors());
-app.use(express.json());
+app.set("trust proxy", 1);
+
+// CORS (default: allow all in dev, restrict with CORS_ORIGIN in prod)
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+app.use(cors({ origin: CORS_ORIGIN }));
+app.use(express.json({ limit: "1mb" }));
+app.use(helmet({ crossOriginResourcePolicy: false }));
+app.use(compression());
 app.use(morgan("dev"));
 
-/* ========================== NEAR ME (mock) ========================== */
+// ---------- Env flags ----------
+const PORT = process.env.PORT || 5000;
+const HOST = process.env.HOST || "0.0.0.0";
+const IBA_SAFE = (process.env.IBA_SAFE ?? "1") === "1"; // default safe mode ON
+const IBA_REINDEX_KEY = process.env.IBA_REINDEX_KEY || ""; // optional gate
+
+// ---------- Data / Cache ----------
+const DATA_DIR = path.join(__dirname, "data");
+const CACHE_FILE = path.join(DATA_DIR, "iba.json");
+
+// ---------- Near Me (mock) ----------
 const mockNearMeTrends = [
   { id:"1", name:"Old Fashioned", type:"Cocktail",
     imageUrl:"https://images.unsplash.com/photo-1542156822-6924d1a71ace?q=80&w=1200&auto=format&fit=crop",
@@ -51,48 +76,31 @@ const mockNearMeTrends = [
     location:{ city:"Clearwater", state:"FL" }, distanceMiles:3.1, popularityScore:95, priceRange:"$$", venues:["Roast & Rye","Boardwalk Bar"]
   },
 ];
+
 function filterNearMe(q) {
-  const { maxDistance, type, tag, sort } = q; let r = [...mockNearMeTrends];
-  if (maxDistance) { const md = +maxDistance; if (!Number.isNaN(md)) r = r.filter(d=>d.distanceMiles<=md); }
-  if (type) r = r.filter(d=>d.type.toLowerCase()===String(type).toLowerCase());
-  if (tag) r = r.filter(d=>d.tags?.map(t=>t.toLowerCase()).includes(String(tag).toLowerCase()));
-  if (sort==="distance") r.sort((a,b)=>a.distanceMiles-b.distanceMiles);
-  else if (sort==="popularity") r.sort((a,b)=>b.popularityScore-a.popularityScore);
+  const { maxDistance, type, tag, sort } = q;
+  let r = [...mockNearMeTrends];
+  if (maxDistance) {
+    const md = +maxDistance;
+    if (!Number.isNaN(md)) r = r.filter(d => d.distanceMiles <= md);
+  }
+  if (type) r = r.filter(d => d.type.toLowerCase() === String(type).toLowerCase());
+  if (tag) r = r.filter(d => d.tags?.map(t=>t.toLowerCase()).includes(String(tag).toLowerCase()));
+  if (sort === "distance") r.sort((a,b)=>a.distanceMiles-b.distanceMiles);
+  else if (sort === "popularity") r.sort((a,b)=>b.popularityScore-a.popularityScore);
   return r;
 }
 
-/* ===================== IBA SCRAPER + SAFE MODE ===================== */
+// ---------- IBA Scraper (safe by default) ----------
 const IBA_INDEX = "https://iba-world.com/cocktails/all-cocktails/";
-const DATA_DIR = path.join(__dirname, "data");
-const CACHE_FILE = path.join(DATA_DIR, "iba.json");
-const IBA_SAFE = process.env.IBA_SAFE === "1"; // set to 1 to bypass scraping
-
-const MOCK_IBA = [
-  {
-    id: "negroni",
-    name: "Negroni",
-    url: "https://iba-world.com/cocktails/negroni/",
-    imageUrl: "https://images.unsplash.com/photo-1565895405227-31a46b101bb7?q=80&w=1200&auto=format&fit=crop",
-    ingredients: ["3 cl Gin","3 cl Campari","3 cl Sweet Vermouth","Orange peel"],
-    steps: ["Stir with ice and strain into an old fashioned glass over a large cube. Express orange peel."],
-    baseSpirit: "Gin",
-    tags: ["bitter","boozy"],
-    source: "IBA"
-  },
-  {
-    id: "margarita",
-    name: "Margarita",
-    url: "https://iba-world.com/cocktails/margarita/",
-    imageUrl: "https://images.unsplash.com/photo-1604908176997-43162b9451b5?q=80&w=1200&auto=format&fit=crop",
-    ingredients: ["5 cl Tequila","2 cl Triple Sec","2 cl Lime juice","Salt rim (optional)"],
-    steps: ["Shake all ingredients with ice and strain into a chilled glass."],
-    baseSpirit: "Tequila/Mezcal",
-    tags: ["citrus","fruity"],
-    source: "IBA"
-  }
-];
+const BAD_SLUGS = new Set([
+  "the-new-era","the-unforgettables","contemporary-classics",
+  "about-us","constitution","board","academy","iba-wcc",
+  "news","events","contact"
+]);
 
 function withTimeout(ms, controller) { return setTimeout(() => controller.abort(), ms); }
+
 async function fetchHTML(url, timeoutMs = 15000) {
   const controller = new AbortController();
   const t = withTimeout(timeoutMs, controller);
@@ -101,14 +109,9 @@ async function fetchHTML(url, timeoutMs = 15000) {
     signal: controller.signal
   });
   clearTimeout(t);
+  if (!res.ok) throw new Error(`Fetch ${url} ${res.status}`);
   return await res.text();
 }
-
-const BAD_SLUGS = new Set([
-  "the-new-era","the-unforgettables","contemporary-classics",
-  "about-us","constitution","board","academy","iba-wcc",
-  "news","events","contact"
-]);
 
 function linksFromIndex(html) {
   const $ = cheerio.load(html);
@@ -210,8 +213,15 @@ async function scrapeDetail(url) {
   return { id, name, url, imageUrl, ingredients, steps, baseSpirit, tags, source:"IBA" };
 }
 
-async function loadCache() { try { return JSON.parse(await fs.readFile(CACHE_FILE,"utf8")); } catch { return null; } }
-async function saveCache(items) { await fs.mkdir(DATA_DIR,{recursive:true}); await fs.writeFile(CACHE_FILE, JSON.stringify(items,null,2)); }
+async function loadCache() {
+  try { return JSON.parse(await fs.readFile(CACHE_FILE, "utf8")); }
+  catch { return null; }
+}
+
+async function saveCache(items) {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fs.writeFile(CACHE_FILE, JSON.stringify(items, null, 2));
+}
 
 async function refreshIBA() {
   if (IBA_SAFE) return MOCK_IBA; // skip scraping in safe mode
@@ -231,6 +241,33 @@ async function refreshIBA() {
   return dedup;
 }
 
+// ---------- IBA: safe mock ----------
+const MOCK_IBA = [
+  {
+    id: "negroni",
+    name: "Negroni",
+    url: "https://iba-world.com/cocktails/negroni/",
+    imageUrl: "https://images.unsplash.com/photo-1565895405227-31a46b101bb7?q=80&w=1200&auto=format&fit=crop",
+    ingredients: ["3 cl Gin","3 cl Campari","3 cl Sweet Vermouth","Orange peel"],
+    steps: ["Stir with ice and strain into an old fashioned glass over a large cube. Express orange peel."],
+    baseSpirit: "Gin",
+    tags: ["bitter","boozy"],
+    source: "IBA"
+  },
+  {
+    id: "margarita",
+    name: "Margarita",
+    url: "https://iba-world.com/cocktails/margarita/",
+    imageUrl: "https://images.unsplash.com/photo-1604908176997-43162b9451b5?q=80&w=1200&auto=format&fit=crop",
+    ingredients: ["5 cl Tequila","2 cl Triple Sec","2 cl Lime juice","Salt rim (optional)"],
+    steps: ["Shake all ingredients with ice and strain into a chilled glass."],
+    baseSpirit: "Tequila/Mezcal",
+    tags: ["citrus","fruity"],
+    source: "IBA"
+  }
+];
+
+// ---------- Helpers ----------
 function filterSearch(items, { q, spirit, tags, limit, offset }) {
   let list = items || [];
   const spirits = spirit ? String(spirit).split(",").map(s=>s.toLowerCase()) : [];
@@ -238,29 +275,53 @@ function filterSearch(items, { q, spirit, tags, limit, offset }) {
   if (q) list = list.filter(c => [c.name, ...(c.ingredients||[])].join(" ").toLowerCase().includes(String(q).toLowerCase()));
   if (spirits.length) list = list.filter(c => c.baseSpirit && spirits.includes(c.baseSpirit.toLowerCase()));
   if (wanted.length)  list = list.filter(c => wanted.every(t => (c.tags||[]).map(x=>x.toLowerCase()).includes(t)));
-  const off = Math.max(0, parseInt(offset||0)); const lim = Math.min(100, parseInt(limit||50));
+  const off = Math.max(0, parseInt(offset||0));
+  const lim = Math.min(100, parseInt(limit||50));
   return list.slice(off, off+lim);
 }
 
-/* ================================ ROUTES ================================ */
-app.get("/", (_req, res) => res.json({ ok:true, service:"BevTrends API" }));
-app.get("/health", (_req,res)=>res.send("ok"));
+function setNoStore(res) {
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+}
 
+// ---------- Routes ----------
+app.get("/", (_req, res) => res.json({ ok:true, service:"BevTrends API", safeIBA: IBA_SAFE }));
+app.get("/health", (_req,res)=>res.send("ok"));
+app.get("/healthz", (_req,res)=>res.send("ok")); // Render/infra friendly
+
+// Near Me (mock)
 app.get("/trending/near-me", (req,res) => {
-  try { res.json(filterNearMe(req.query)); }
-  catch (e) { console.error(e); res.status(500).json({ error:"Failed to fetch near-me trends" }); }
+  try {
+    const out = filterNearMe(req.query);
+    setNoStore(res);
+    res.json(out);
+  } catch (e) {
+    console.error("Near Me error:", e);
+    res.status(500).json({ error:"Failed to fetch near-me trends" });
+  }
 });
 
-/* IBA */
+// IBA endpoints (primary: /api prefix)
 app.get("/api/iba/mock", (_req,res) => res.json(MOCK_IBA));
 
-app.get("/api/iba/reindex", async (_req,res) => {
-  try { const data = await refreshIBA(); res.json({ count:data.length, safe: IBA_SAFE }); }
-  catch (e) { console.error(e); res.status(500).json({ error:"Reindex failed" }); }
+app.get("/api/iba/stats", async (_req,res) => {
+  const data = await loadCache();
+  res.json({ cached: !!data, count: data?.length || 0, safe: IBA_SAFE });
 });
 
-app.get("/api/iba/stats", async (_req,res) => {
-  const data = await loadCache(); res.json({ cached: !!data, count: data?.length || 0 });
+app.get("/api/iba/reindex", async (req,res) => {
+  try {
+    if (IBA_REINDEX_KEY) {
+      const key = req.query.key || req.header("x-iba-key") || "";
+      if (key !== IBA_REINDEX_KEY) return res.status(401).json({ error: "Unauthorized" });
+    }
+    const data = await refreshIBA();
+    setNoStore(res);
+    res.json({ count:data.length, safe: IBA_SAFE });
+  } catch (e) {
+    console.error("Reindex failed:", e);
+    res.status(500).json({ error:"Reindex failed" });
+  }
 });
 
 app.get("/api/iba/cocktails", async (req,res) => {
@@ -269,13 +330,14 @@ app.get("/api/iba/cocktails", async (req,res) => {
     if (!data) data = await refreshIBA();
     if (IBA_SAFE && (!data || data.length === 0)) data = MOCK_IBA;
     const out = filterSearch(data, {
-      q: req.query.q || req.query.search || "", // accept ?q= or ?search=
+      q: req.query.q || req.query.search || "",
       spirit: req.query.spirit || "",
       tags: req.query.tags || "",
       limit: req.query.limit, offset: req.query.offset
     });
+    setNoStore(res);
     res.json(out);
-  } catch (e) { console.error(e); res.status(500).json({ error:"Search failed" }); }
+  } catch (e) { console.error("Search failed:", e); res.status(500).json({ error:"Search failed" }); }
 });
 
 app.get("/api/iba/cocktails/:id", async (req,res) => {
@@ -285,15 +347,83 @@ app.get("/api/iba/cocktails/:id", async (req,res) => {
     if (IBA_SAFE && (!data || data.length === 0)) data = MOCK_IBA;
     const item = data.find(x => String(x.id) === String(req.params.id));
     if (!item) return res.status(404).json({ error:"Not found" });
+    setNoStore(res);
     res.json(item);
-  } catch (e) { console.error(e); res.status(500).json({ error:"Lookup failed" }); }
+  } catch (e) { console.error("Lookup failed:", e); res.status(500).json({ error:"Lookup failed" }); }
 });
 
-/* 404 */
+/* ===== Aliases so BOTH /... and /api/... work ===== */
+// Health at /api/health (alias)
+app.get("/api/health", (_req,res)=>res.send("ok"));
+app.get("/api/healthz", (_req,res)=>res.send("ok"));
+
+// IBA aliases WITHOUT /api (mirror of the /api/iba/* above)
+app.get("/iba/mock", (_req,res) => res.json(MOCK_IBA));
+
+app.get("/iba/stats", async (_req,res) => {
+  const data = await loadCache();
+  res.json({ cached: !!data, count: data?.length || 0, safe: IBA_SAFE });
+});
+
+app.get("/iba/reindex", async (req,res) => {
+  try {
+    if (IBA_REINDEX_KEY) {
+      const key = req.query.key || req.header("x-iba-key") || "";
+      if (key !== IBA_REINDEX_KEY) return res.status(401).json({ error: "Unauthorized" });
+    }
+    const data = await refreshIBA();
+    setNoStore(res);
+    res.json({ count:data.length, safe: IBA_SAFE });
+  } catch (e) {
+    console.error("Reindex failed:", e);
+    res.status(500).json({ error:"Reindex failed" });
+  }
+});
+
+app.get("/iba/cocktails", async (req,res) => {
+  try {
+    let data = await loadCache();
+    if (!data) data = await refreshIBA();
+    if (IBA_SAFE && (!data || data.length === 0)) data = MOCK_IBA;
+    const out = filterSearch(data, {
+      q: req.query.q || req.query.search || "",
+      spirit: req.query.spirit || "",
+      tags: req.query.tags || "",
+      limit: req.query.limit, offset: req.query.offset
+    });
+    setNoStore(res);
+    res.json(out);
+  } catch (e) { console.error("Search failed:", e); res.status(500).json({ error:"Search failed" }); }
+});
+
+app.get("/iba/cocktails/:id", async (req,res) => {
+  try {
+    let data = await loadCache();
+    if (!data) data = await refreshIBA();
+    if (IBA_SAFE && (!data || data.length === 0)) data = MOCK_IBA;
+    const item = data.find(x => String(x.id) === String(req.params.id));
+    if (!item) return res.status(404).json({ error:"Not found" });
+    setNoStore(res);
+    res.json(item);
+  } catch (e) { console.error("Lookup failed:", e); res.status(500).json({ error:"Lookup failed" }); }
+});
+
+// 404
 app.use((req,res)=>res.status(404).json({ error:"Not found" }));
 
-/* SERVER */
-const PORT = process.env.PORT || 5000;
-const HOST = process.env.HOST || "0.0.0.0"; // bind all interfaces
-app.set("trust proxy", 1);
-app.listen(PORT, HOST, () => console.log(`BevTrends API listening at http://${HOST}:${PORT}`));
+// Error handler
+// eslint-disable-next-line no-unused-vars
+app.use((err, _req, res, _next) => {
+  console.error("Unhandled error:", err);
+  res.status(500).json({ error: "Internal server error" });
+});
+
+// ---------- Server ----------
+(async () => {
+  try {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+  } catch {}
+  app.listen(PORT, HOST, () => {
+    console.log(`BevTrends API listening at http://${HOST}:${PORT} (safeIBA=${IBA_SAFE})`);
+  });
+})();
