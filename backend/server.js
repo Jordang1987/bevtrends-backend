@@ -42,8 +42,7 @@ app.use(compression());
 app.use(morgan("dev"));
 
 // ---------- Env flags ----------
-const PORT = process.env.PORT || 5000;
-const HOST = process.env.HOST || "0.0.0.0";
+const PORT = Number(process.env.PORT) || 10000; // Render injects PORT
 const IBA_SAFE = (process.env.IBA_SAFE ?? "1") === "1"; // default safe mode ON
 const IBA_REINDEX_KEY = process.env.IBA_REINDEX_KEY || ""; // optional gate
 
@@ -196,7 +195,7 @@ async function scrapeDetail(url) {
   };
   const baseSpirit = ingredients.map(detectBase).find(Boolean) || null;
 
-  const tags = (()=> {
+  const tags = (()=>{
     const s = ingredients.join(" ").toLowerCase(); const arr=[];
     if (/(lemon|lime|orange|grapefruit|pineapple|strawberry|passion|juice)/.test(s)) arr.push("fruity");
     if (/(vermouth|amaro|campari|angostura|bitters)/.test(s)) arr.push("bitter");
@@ -290,16 +289,18 @@ app.get("/health", (_req,res)=>res.send("ok"));
 app.get("/healthz", (_req,res)=>res.send("ok")); // Render/infra friendly
 
 // Near Me (mock)
-app.get("/trending/near-me", (req,res) => {
+function handleNearMe(req, res) {
   try {
     const out = filterNearMe(req.query);
     setNoStore(res);
     res.json(out);
   } catch (e) {
     console.error("Near Me error:", e);
-    res.status(500).json({ error:"Failed to fetch near-me trends" });
+    res.status(500).json({ error: "Failed to fetch near-me trends" });
   }
-});
+}
+app.get("/trending/near-me", handleNearMe);
+app.get("/api/trending/near-me", handleNearMe);
 
 // IBA endpoints (primary: /api prefix)
 app.get("/api/iba/mock", (_req,res) => res.json(MOCK_IBA));
@@ -353,11 +354,9 @@ app.get("/api/iba/cocktails/:id", async (req,res) => {
 });
 
 /* ===== Aliases so BOTH /... and /api/... work ===== */
-// Health at /api/health (alias)
 app.get("/api/health", (_req,res)=>res.send("ok"));
 app.get("/api/healthz", (_req,res)=>res.send("ok"));
 
-// IBA aliases WITHOUT /api (mirror of the /api/iba/* above)
 app.get("/iba/mock", (_req,res) => res.json(MOCK_IBA));
 
 app.get("/iba/stats", async (_req,res) => {
@@ -420,10 +419,9 @@ app.use((err, _req, res, _next) => {
 
 // ---------- Server ----------
 (async () => {
-  try {
-    await fs.mkdir(DATA_DIR, { recursive: true });
-  } catch {}
-  app.listen(PORT, HOST, () => {
-    console.log(`BevTrends API listening at http://${HOST}:${PORT} (safeIBA=${IBA_SAFE})`);
+  try { await fs.mkdir(DATA_DIR, { recursive: true }); } catch {}
+  // Bind ONLY to PORT (Render provides it). Do NOT pass HOST.
+  app.listen(PORT, () => {
+    console.log(`BevTrends API listening on :${PORT} (safeIBA=${IBA_SAFE})`);
   });
 })();
